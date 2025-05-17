@@ -1,33 +1,42 @@
 import {
 	AppSyncIdentityCognito,
 	Context,
-	DynamoDBPutItemRequest,
+	DynamoDBUpdateItemRequest,
 	util,
 } from '@aws-appsync/utils'
 import { Recipe, UpdateRecipeMutationVariables } from '../API'
 
 export function request(
 	ctx: Context<UpdateRecipeMutationVariables>
-): DynamoDBPutItemRequest {
+): DynamoDBUpdateItemRequest {
 	const { id, ...values } = ctx.args.input
 	const identity = ctx.identity as AppSyncIdentityCognito
 
+	// Use UpdateItem instead of PutItem to avoid condition issues
 	return {
-		operation: 'PutItem',
+		operation: 'UpdateItem',
 		key: util.dynamodb.toMapValues({ id }),
-		attributeValues: util.dynamodb.toMapValues({
-			__typename: 'Recipe',
-			updatedAt: util.time.nowISO8601(),
-			...values,
-		}),
-		condition: {
-			expression: 'contains(owner,:expectedOwner)',
-			expressionValues: {
-				':expectedOwner': JSON.stringify(
-					util.dynamodb.toDynamoDB(identity.sub)
-				),
+		update: {
+			expression: 'SET #title = :title, #description = :description, #servings = :servings, #ingredientsText = :ingredientsText, #stepsText = :stepsText, #coverImage = :coverImage, #updatedAt = :updatedAt',
+			expressionNames: {
+				'#title': 'title',
+				'#description': 'description',
+				'#servings': 'servings',
+				'#ingredientsText': 'ingredientsText',
+				'#stepsText': 'stepsText',
+				'#coverImage': 'coverImage',
+				'#updatedAt': 'updatedAt'
 			},
-		},
+			expressionValues: util.dynamodb.toMapValues({
+				':title': values.title,
+				':description': values.description,
+				':servings': values.servings,
+				':ingredientsText': values.ingredientsText,
+				':stepsText': values.stepsText,
+				':coverImage': values.coverImage,
+				':updatedAt': util.time.nowISO8601()
+			})
+		}
 	}
 }
 
