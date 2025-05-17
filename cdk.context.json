@@ -1,0 +1,14 @@
+{
+	"globals": {
+		"appName": "appsync-saas-saas",
+		"region": "us-east-1",
+		"appDescription": "A sample saas to inspire your next great idea!"
+	},
+	"environments": [
+		{
+			"environment": "develop",
+			"branchName": "develop",
+			"s3AllowedOrigins": ["*"]
+		}
+	]
+}

@@ -1,0 +1,337 @@
+import { envNameContext } from './../../cdk.context.d'
+import { Construct } from 'constructs'
+import * as awsAppsync from 'aws-cdk-lib/aws-appsync'
+import * as path from 'path'
+import { UserPool } from 'aws-cdk-lib/aws-cognito'
+import { Table } from 'aws-cdk-lib/aws-dynamodb'
+import { IRole } from 'aws-cdk-lib/aws-iam'
+
+type AppSyncAPIProps = {
+	appName: string
+	env: envNameContext
+	unauthenticatedRole: IRole
+	userpool: UserPool
+	saasDB: Table
+	userDB: Table
+}
+
+export function createSaaSAPI(scope: Construct, props: AppSyncAPIProps) {
+	const api = new awsAppsync.GraphqlApi(scope, 'RecipeAPI', {
+		name: `${props.appName}-${props.env}-RecipeAPI`,
+		schema: awsAppsync.SchemaFile.fromAsset(
+			path.join(__dirname, './graphql/schema.graphql')
+		),
+		authorizationConfig: {
+			defaultAuthorization: {
+				authorizationType: awsAppsync.AuthorizationType.USER_POOL,
+				userPoolConfig: {
+					userPool: props.userpool,
+				},
+			},
+			additionalAuthorizationModes: [
+				{ authorizationType: awsAppsync.AuthorizationType.IAM },
+			],
+		},
+		logConfig: {
+			fieldLogLevel: awsAppsync.FieldLogLevel.ALL,
+		},
+	})
+
+	api.grantQuery(props.unauthenticatedRole, 'getRecipe', 'listRecipes')
+
+	const RecipeDataSource = api.addDynamoDbDataSource(
+		`${props.appName}-${props.env}-RecipeDataSource`,
+		props.saasDB
+	)
+	const UserDataSource = api.addDynamoDbDataSource(
+		`${props.appName}-${props.env}-UserDataSource`,
+		props.userDB
+	)
+
+	// Create Recipe Function
+	const createRecipeFunction = new awsAppsync.AppsyncFunction(
+		scope,
+		'createRecipeFunction',
+		{
+			name: 'createRecipeFunction',
+			api,
+			dataSource: RecipeDataSource,
+			runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+			code: awsAppsync.Code.fromInline(`
+function request(ctx) {
+  return {
+    operation: 'PutItem',
+    key: { id: { S: util.autoId() } },
+    attributeValues: {
+      __typename: { S: 'Recipe' },
+      owner: { S: ctx.identity.sub },
+      createdAt: { S: util.time.nowISO8601() },
+      updatedAt: { S: util.time.nowISO8601() },
+      title: { S: ctx.args.input.title },
+      description: { S: ctx.args.input.description },
+      coverImage: { S: ctx.args.input.coverImage },
+      servings: { N: ctx.args.input.servings.toString() },
+      ingredientsText: { S: ctx.args.input.ingredientsText },
+      stepsText: { S: ctx.args.input.stepsText }
+    }
+  };
+}
+
+function response(ctx) {
+  return ctx.result;
+}
+			`),
+		}
+	)
+	
+	// Get User Function
+	const getUserFunction = new awsAppsync.AppsyncFunction(
+		scope,
+		'getUserFunction',
+		{
+			name: 'getUserFunction',
+			api,
+			dataSource: UserDataSource,
+			runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+			code: awsAppsync.Code.fromInline(`
+function request(ctx) {
+  return {
+    operation: 'GetItem',
+    key: { id: { S: ctx.args.id } }
+  };
+}
+
+function response(ctx) {
+  return ctx.result;
+}
+			`),
+		}
+	)
+
+	// Get Recipe Function
+	const getRecipeFunction = new awsAppsync.AppsyncFunction(
+		scope,
+		'getRecipeFunction',
+		{
+			name: 'getRecipeFunction',
+			api,
+			dataSource: RecipeDataSource,
+			runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+			code: awsAppsync.Code.fromInline(`
+function request(ctx) {
+  return {
+    operation: 'GetItem',
+    key: { id: { S: ctx.args.id } }
+  };
+}
+
+function response(ctx) {
+  return ctx.result;
+}
+			`),
+		}
+	)
+
+	// Update Recipe Function
+	const updateRecipeFunction = new awsAppsync.AppsyncFunction(
+		scope,
+		'updateRecipeFunction',
+		{
+			name: 'updateRecipeFunction',
+			api,
+			dataSource: RecipeDataSource,
+			runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+			code: awsAppsync.Code.fromInline(`
+function request(ctx) {
+  return {
+    operation: 'UpdateItem',
+    key: { id: { S: ctx.args.input.id } },
+    update: {
+      expression: 'SET updatedAt = :updatedAt, title = :title, description = :description, coverImage = :coverImage, servings = :servings, ingredientsText = :ingredientsText, stepsText = :stepsText',
+      expressionValues: {
+        ':updatedAt': { S: util.time.nowISO8601() },
+        ':title': { S: ctx.args.input.title },
+        ':description': { S: ctx.args.input.description },
+        ':coverImage': { S: ctx.args.input.coverImage },
+        ':servings': { N: ctx.args.input.servings.toString() },
+        ':ingredientsText': { S: ctx.args.input.ingredientsText },
+        ':stepsText': { S: ctx.args.input.stepsText }
+      }
+    }
+  };
+}
+
+function response(ctx) {
+  return ctx.result;
+}
+			`),
+		}
+	)
+
+	// Delete Recipe Function
+	const deleteRecipeFunction = new awsAppsync.AppsyncFunction(
+		scope,
+		'deleteRecipeFunction',
+		{
+			name: 'deleteRecipeFunction',
+			api,
+			dataSource: RecipeDataSource,
+			runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+			code: awsAppsync.Code.fromInline(`
+function request(ctx) {
+  return {
+    operation: 'DeleteItem',
+    key: { id: { S: ctx.args.id } }
+  };
+}
+
+function response(ctx) {
+  return ctx.result;
+}
+			`),
+		}
+	)
+
+	// List Recipes Function
+	const listRecipesFunction = new awsAppsync.AppsyncFunction(
+		scope,
+		'listRecipesFunction',
+		{
+			name: 'listRecipesFunction',
+			api,
+			dataSource: RecipeDataSource,
+			runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+			code: awsAppsync.Code.fromInline(`
+function request(ctx) {
+  return {
+    operation: 'Scan',
+    limit: ctx.args.limit || 20,
+    nextToken: ctx.args.nextToken
+  };
+}
+
+function response(ctx) {
+  return {
+    items: ctx.result.items,
+    nextToken: ctx.result.nextToken
+  };
+}
+			`),
+		}
+	)
+
+	// Update User Function
+	const updateUserFunction = new awsAppsync.AppsyncFunction(
+		scope,
+		'updateUserFunction',
+		{
+			name: 'updateUserFunction',
+			api,
+			dataSource: UserDataSource,
+			runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+			code: awsAppsync.Code.fromInline(`
+function request(ctx) {
+  return {
+    operation: 'UpdateItem',
+    key: { id: { S: ctx.args.input.id } },
+    update: {
+      expression: 'SET updatedAt = :updatedAt, displayName = :displayName, profilePicture = :profilePicture',
+      expressionValues: {
+        ':updatedAt': { S: util.time.nowISO8601() },
+        ':displayName': ctx.args.input.displayName ? { S: ctx.args.input.displayName } : { NULL: true },
+        ':profilePicture': ctx.args.input.profilePicture ? { S: ctx.args.input.profilePicture } : { NULL: true }
+      }
+    }
+  };
+}
+
+function response(ctx) {
+  return ctx.result;
+}
+			`),
+		}
+	)
+
+	// Pass-through resolver for pipeline resolvers
+	const passThroughCode = awsAppsync.Code.fromInline(`
+function request(ctx) {
+  return {};
+}
+
+function response(ctx) {
+  return ctx.prev.result;
+}
+	`);
+
+	// Update User Pipeline Resolver
+	new awsAppsync.Resolver(scope, 'updateUserPipelineResolver', {
+		api,
+		typeName: 'Mutation',
+		fieldName: 'updateUser',
+		code: passThroughCode,
+		runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+		pipelineConfig: [updateUserFunction],
+	})
+	
+	// Create Recipe Pipeline Resolver
+	new awsAppsync.Resolver(scope, 'createRecipePipelineResolver', {
+		api,
+		typeName: 'Mutation',
+		fieldName: 'createRecipe',
+		code: passThroughCode,
+		runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+		pipelineConfig: [createRecipeFunction],
+	})
+
+	// Get User Pipeline Resolver
+	new awsAppsync.Resolver(scope, 'getUserPipelineResolver', {
+		api,
+		typeName: 'Query',
+		fieldName: 'getUser',
+		code: passThroughCode,
+		runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+		pipelineConfig: [getUserFunction],
+	})
+
+	// Get Recipe Pipeline Resolver
+	new awsAppsync.Resolver(scope, 'getRecipePipelineResolver', {
+		api,
+		typeName: 'Query',
+		fieldName: 'getRecipe',
+		code: passThroughCode,
+		runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+		pipelineConfig: [getRecipeFunction],
+	})
+
+	// Update Recipe Pipeline Resolver
+	new awsAppsync.Resolver(scope, 'updateRecipePipelineResolver', {
+		api,
+		typeName: 'Mutation',
+		fieldName: 'updateRecipe',
+		code: passThroughCode,
+		runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+		pipelineConfig: [updateRecipeFunction],
+	})
+
+	// Delete Recipe Pipeline Resolver
+	new awsAppsync.Resolver(scope, 'deleteRecipePipelineResolver', {
+		api,
+		typeName: 'Mutation',
+		fieldName: 'deleteRecipe',
+		code: passThroughCode,
+		runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+		pipelineConfig: [deleteRecipeFunction],
+	})
+
+	// List Recipes Pipeline Resolver
+	new awsAppsync.Resolver(scope, 'listRecipesPipelineResolver', {
+		api,
+		typeName: 'Query',
+		fieldName: 'listRecipes',
+		code: passThroughCode,
+		runtime: awsAppsync.FunctionRuntime.JS_1_0_0,
+		pipelineConfig: [listRecipesFunction],
+	})
+
+	return api
+}
