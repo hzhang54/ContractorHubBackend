@@ -233,6 +233,30 @@ export function response(ctx) {
 		}
 	)
 //':expectedOwner': JSON.stringify(util.dynamodb.toDynamoDB(identity.sub)),
+
+//import { util } from '@aws-appsync/utils'
+//export function request(ctx) {
+//    const { id, ...values } = ctx.args.input;
+//    const identity = ctx.identity;
+//    return {
+//        operation: 'PutItem',
+//        key: util.dynamodb.toMapValues({ id }),
+//        attributeValues: util.dynamodb.toMapValues({
+//            __typename: 'Recipe',
+//            updatedAt: util.time.nowISO8601(),
+//            ...values,
+//        }),
+//        condition: {
+//            expression: 'contains(owner,:expectedOwner)',
+//            expressionValues: {
+//                ':expectedOwner': util.dynamodb.toDynamoDB(identity.sub),
+//            },
+//},
+//    };
+//}
+//export function response(ctx) {
+//    return ctx.result;
+//}
 	const updateRecipeFunction = new awsAppsync.AppsyncFunction(
 		scope,
 		'updateRecipeFunction',
@@ -245,21 +269,30 @@ export function response(ctx) {
 import { util } from '@aws-appsync/utils'
 export function request(ctx) {
     const { id, ...values } = ctx.args.input;
-    const identity = ctx.identity;
     return {
-        operation: 'PutItem',
+        operation: 'UpdateItem',
         key: util.dynamodb.toMapValues({ id }),
-        attributeValues: util.dynamodb.toMapValues({
-            __typename: 'Recipe',
-            updatedAt: util.time.nowISO8601(),
-            ...values,
-        }),
-        condition: {
-            expression: 'contains(owner,:expectedOwner)',
-            expressionValues: {
-                ':expectedOwner': util.dynamodb.toDynamoDB(identity.sub),
+        update: {
+            expression: 'SET #title = :title, #description = :description, #servings = :servings, #ingredientsText = :ingredientsText, #stepsText = :stepsText, #coverImage = :coverImage, #updatedAt = :updatedAt',
+            expressionNames: {
+                '#title': 'title',
+                '#description': 'description',
+                '#servings': 'servings',
+                '#ingredientsText': 'ingredientsText',
+                '#stepsText': 'stepsText',
+                '#coverImage': 'coverImage',
+                '#updatedAt': 'updatedAt'
             },
-        },
+            expressionValues: util.dynamodb.toMapValues({
+                ':title': values.title,
+                ':description': values.description,
+                ':servings': values.servings,
+                ':ingredientsText': values.ingredientsText,
+                ':stepsText': values.stepsText,
+                ':coverImage': values.coverImage,
+                ':updatedAt': util.time.nowISO8601()
+            })
+        }
     };
 }
 export function response(ctx) {
