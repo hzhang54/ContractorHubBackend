@@ -232,7 +232,7 @@ export function response(ctx) {
 			),
 		}
 	)
-
+//':expectedOwner': JSON.stringify(util.dynamodb.toDynamoDB(identity.sub)),
 	const updateRecipeFunction = new awsAppsync.AppsyncFunction(
 		scope,
 		'updateRecipeFunction',
@@ -257,7 +257,7 @@ export function request(ctx) {
         condition: {
             expression: 'contains(owner,:expectedOwner)',
             expressionValues: {
-                ':expectedOwner': JSON.stringify(util.dynamodb.toDynamoDB(identity.sub)),
+                ':expectedOwner': util.dynamodb.toDynamoDB(identity.sub),
             },
         },
     };
@@ -270,7 +270,7 @@ export function response(ctx) {
 			),
 		}
 	)
-
+//':expectedOwner': JSON.stringify(util.dynamodb.toDynamoDB(identity.sub)),
 	const deleteRecipeFunction = new awsAppsync.AppsyncFunction(
 		scope,
 		'deleteRecipeFunction',
@@ -290,7 +290,7 @@ export function request(ctx) {
         condition: {
             expression: 'contains(owner,:expectedOwner)',
             expressionValues: {
-                ':expectedOwner': JSON.stringify(util.dynamodb.toDynamoDB(identity.sub)),
+                ':expectedOwner': util.dynamodb.toDynamoDB(identity.sub),
             },
         },
     };
